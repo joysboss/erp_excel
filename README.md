@@ -484,6 +484,10 @@ tail -f nohup.out
 
 - **项目地址**: https://github.com/joysboss/erp_excel
 - **问题反馈**: https://github.com/joysboss/erp_excel/issues
+- **使用文档**: 
+  - [天店模板使用说明](./md/天店模板使用说明.md)
+  - [ERP模板完整指南](./md/ERP_TEMPLATE_GUIDE.md)
+  - [文档目录](./md/README.md)
 
 ---
 
