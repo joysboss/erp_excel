@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  smart-excel:
+    image: smart-excel
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart-excel
+    ports:
+      - "8001:8000"
+    volumes:
+      # 代码映射（修改立即生效）
+      - ./core:/app/core
+      - ./templates:/app/templates
+      - ./main.py:/app/main.py
+      - ./run_server.py:/app/run_server.py
+      - ./launch.py:/app/launch.py
+      - ./__init__.py:/app/__init__.py
+      
+      # 配置和数据文件映射
+      - ./requirements.txt:/app/requirements.txt
+      - ./data:/app/data
+      - ./moban:/app/moban
+      
+      # 静态文件映射
+      - ./static:/app/static
+      
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - FLASK_ENV=development
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    restart: unless-stopped
+    stdin_open: true
+    tty: true

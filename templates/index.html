@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="Smart Excel Extractor - 智能Excel数据提取系统，基于列结构映射，优雅提取，解决表格数据提取的痛点">
+    <title>Smart Excel Extractor - 智能Excel数据提取系统</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* 移动端优化 */
+        @media (max-width: 768px) {
+            .mobile-text-sm { font-size: 0.875rem; }
+            .mobile-text-xs { font-size: 0.75rem; }
+            .mobile-p-2 { padding: 0.5rem; }
+            .mobile-mb-2 { margin-bottom: 0.5rem; }
+        }
+        
+        /* 触摸优化 */
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        button, select, input {
+            touch-action: manipulation;
+        }
+        
+        /* 滚动优化 */
+        body {
+            overscroll-behavior-y: none;
+        }
+        
+        /* 加载优化 */
+        .loading-shimmer {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen" x-data="app()" x-cloak>
+    <!-- 导航栏 -->
+    <nav class="bg-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2 sm:space-x-3">
+                    <svg class="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <div class="min-w-0">
+                        <h1 class="text-lg sm:text-2xl font-bold text-gray-800 truncate">Smart Excel Extractor</h1>
+                        <p class="text-xs sm:text-sm text-gray-500 truncate">智能Excel数据提取系统</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="px-2 py-1 sm:px-3 sm:py-1 bg-green-100 text-green-800 rounded-full text-xs sm:text-sm font-semibold">Excel智能提取</span>
+                    <span class="px-2 py-1 sm:px-3 sm:py-1 bg-blue-100 text-blue-800 rounded-full text-xs sm:text-sm font-semibold">by:哲多</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <div class="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+        <!-- 上传区域 -->
+        <div class="bg-white rounded-lg shadow-lg p-4 sm:p-6 md:p-8 mb-6 md:mb-8">
+            <h2 class="text-lg sm:text-xl font-bold text-gray-800 mb-3 sm:mb-4">📁 上传Excel文件</h2>
+            
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 sm:p-8 md:p-12 text-center hover:border-indigo-500 transition-colors"
+                 @dragover.prevent="isDragging = true"
+                 @dragleave.prevent="isDragging = false"
+                 @drop.prevent="handleDrop($event)"
+                 :class="{'border-indigo-500 bg-indigo-50': isDragging}"
+                 @click="document.getElementById('fileInput').click()">
+                
+                <input type="file" id="fileInput" 
+                       @change="handleFileSelect($event)" 
+                       accept=".xlsx,.xls,.xlsm,.xlsb,.xltx,.xltm,.csv,.tsv,.txt"
+                       class="hidden">
+                
+                <div class="space-y-3 sm:space-y-4">
+                    <svg class="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    
+                    <div>
+                        <button @click="$event.stopPropagation(); document.getElementById('fileInput').click()" 
+                                class="px-4 sm:px-6 py-2 sm:py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm sm:text-base font-semibold">
+                            选择文件
+                        </button>
+                        <p class="mt-2 text-xs sm:text-sm text-gray-500">或拖拽文件到此处</p>
+                    </div>
+                    
+                    <p class="text-xs text-gray-400">支持格式: .xlsx, .xls, .xlsm, .xlsb, .csv, .tsv, .txt</p>
+                </div>
+            </div>
+
+            <!-- 文件信息 -->
+            <div x-show="selectedFile" class="mt-3 sm:mt-4 p-3 sm:p-4 bg-gray-50 rounded-lg">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-3 sm:space-y-0">
+                    <div class="flex items-center space-x-3 w-full sm:w-auto">
+                        <svg class="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span class="font-medium text-gray-700 text-sm sm:text-base truncate max-w-[200px] sm:max-w-none" x-text="selectedFile?.name"></span>
+                    </div>
+                    <button @click="processFile()" 
+                            :disabled="processing"
+                            class="w-full sm:w-auto px-4 sm:px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span x-show="!processing">🚀 开始识别</span>
+                        <span x-show="processing">⏳ 处理中...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 进度提示 -->
+        <div x-show="processing" class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-8 fade-in">
+            <div class="flex items-center">
+                <svg class="animate-spin h-5 w-5 text-blue-500 mr-3" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-blue-700 font-medium">正在识别中，请稍候...</span>
+            </div>
+        </div>
+
+        <!-- 结果展示 -->
+        <div x-show="result" class="space-y-6 fade-in">
+            <!-- 统计信息 -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">总行数</p>
+                            <p class="text-2xl font-bold text-gray-800" x-text="result?.stats?.data_rows"></p>
+                        </div>
+                        <svg class="w-10 h-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">成功提取</p>
+                            <p class="text-2xl font-bold text-green-600" x-text="result?.stats?.extracted_rows"></p>
+                        </div>
+                        <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">成功率</p>
+                            <p class="text-2xl font-bold text-indigo-600" x-text="result?.stats?.success_rate + '%'"></p>
+                        </div>
+                        <svg class="w-10 h-10 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-500">处理速度</p>
+                            <p class="text-2xl font-bold text-purple-600" x-text="result?.stats?.speed + ' 行/秒'"></p>
+                        </div>
+                        <svg class="w-10 h-10 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 列映射信息 -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">🔗 列映射关系</h3>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <template x-for="(mapping, field) in result?.mappings" :key="field">
+                        <div class="p-3 bg-gray-50 rounded-lg">
+                            <p class="text-sm font-semibold text-gray-700" x-text="field"></p>
+                            <p class="text-xs text-gray-500" x-text="'列' + mapping.column_index + ' (' + mapping.column_name + ')'"></p>
+                            <div class="mt-1">
+                                <span class="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full" x-text="'置信度 ' + (mapping.confidence * 100).toFixed(0) + '%'"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+<!-- 手动指正配置 -->
+            <div class="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 md:mb-8" x-show="result">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 sm:mb-4 space-y-2 sm:space-y-0">
+                    <h3 class="text-base sm:text-lg font-bold text-gray-800">🔧 手动指正配置</h3>
+                    <div class="flex space-x-2">
+                        <button @click="resetCorrections()" 
+                                class="px-3 py-1.5 sm:px-4 sm:py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm">
+                            重置
+                        </button>
+                    </div>
+                </div>
+                
+                <p class="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">如果自动识别的列不正确，请选择正确的列进行指正</p>
+                
+                <!-- 实时预览区域 -->
+                <div x-show="Object.keys(corrections).some(k => corrections[k] !== '')" class="mb-4 p-3 sm:p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <h4 class="text-xs sm:text-sm font-semibold text-yellow-800 mb-2">📋 指正预览</h4>
+                    <div class="space-y-1">
+                        <template x-for="field in getAllFields()" :key="'preview-' + field">
+                            <div x-show="corrections[field] !== ''" class="flex items-center justify-between text-xs sm:text-sm">
+                                <span class="text-gray-700" x-text="field + ': 列' + (result?.mappings?.[field]?.column_index ?? '-') + ' → 列' + corrections[field]"></span>
+                                <span class="text-gray-500" x-text="'(' + getColumnName(corrections[field]) + ')'"></span>
+                            </div>
+                        </template>
+                    </div>
+                    <p class="text-xs text-yellow-700 mt-2">⚠️ 请确认选择的列包含正确的数据</p>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                    <template x-for="field in getAllFields()" :key="field">
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-x-4 p-3 sm:p-4 bg-gray-50 rounded-lg" 
+                             :class="{'ring-2 ring-indigo-500': corrections[field] !== '', 'opacity-75': !result?.mappings?.[field]}">
+                            <div class="flex-shrink-0 w-16 sm:w-24">
+                                <p class="text-xs sm:text-sm font-semibold" 
+                                   :class="result?.mappings?.[field] ? 'text-gray-700' : 'text-gray-500'"
+                                   x-text="field"></p>
+                            </div>
+                            <div class="flex-grow w-full">
+                                <select x-model="corrections[field]"
+                                        @change="validateCorrection(field)"
+                                        class="w-full px-2 sm:px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                                    <option value="">- 选择列 -</option>
+                                    <template x-for="col in getValidHeaders()" :key="'header-' + field + '-' + col.index">
+                                        <option :value="String(col.index)" 
+                                                x-text="'列' + col.index + ' [' + col.header + '] ' + getColumnPreview(col.index)"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="flex-shrink-0">
+                                <span class="text-xs px-2 py-1" 
+                                      :class="corrections[field] !== '' ? 'bg-indigo-100 text-indigo-800' : 'bg-blue-100 text-blue-800'" 
+                                      x-text="getStatusText(field)"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- 应用指正按钮 -->
+                <div x-show="Object.keys(corrections).some(k => corrections[k] !== '')" class="mt-4">
+                    <button @click="applyCorrection()" 
+                            :disabled="processing"
+                            class="w-full px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span x-show="!processing">✅ 应用指正</span>
+                        <span x-show="processing">⏳ 应用中...</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 导出配置 -->
+            <div class="bg-white rounded-lg shadow p-6" x-show="result">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">📤 导出配置</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">供应商编码</label>
+                        <input type="text" x-model="manualCodes.supplier_code" placeholder="例如: SUP001"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">类别编码</label>
+                        <input type="text" x-model="manualCodes.category_code" placeholder="例如: CAT001"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">ERP模板</label>
+                        <select x-model="selectedTemplate"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            <option value="default">默认模板</option>
+                            <option value="moban/商品档案模版.xls">思迅商云X（商品档案）</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据预览 -->
+                        <div class="bg-white rounded-lg shadow p-4 sm:p-6 overflow-hidden">
+                            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 space-y-2 sm:space-y-0">
+                                <h3 class="text-base sm:text-lg font-bold text-gray-800">📊 数据预览（前20条）</h3>
+                                <button @click="exportData()" 
+                                        class="px-3 py-2 sm:px-4 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base whitespace-nowrap">
+                                    📥 导出Excel
+                                </button>
+                            </div>
+                            
+                            <div class="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+                                <div class="min-w-[600px]">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">条码</th>
+                                                <th class="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">品名</th>
+                                                <th class="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">进价</th>
+                                                <th class="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">零售价</th>
+                                                <th class="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">单位</th>
+                                                <th class="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">规格</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white divide-y divide-gray-200">
+                                            <template x-for="(row, index) in result?.results?.slice(0, 20)" :key="index">
+                                                <tr class="hover:bg-gray-50">
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-900" x-text="row.条码 || '-'"></td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-900" x-text="row.品名 || '-'"></td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-900" x-text="row.进价 || '-'"></td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-900" x-text="row.零售价 || '-'"></td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-900" x-text="row.单位 || '-'"></td>
+                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-900" x-text="row.规格 || '-'"></td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white shadow-lg mt-12">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+            <div class="text-center text-gray-500 text-sm mb-4">
+                <p>Smart Excel Extractor v1.0.0 | 基于列结构映射 | 优雅提取 | 解决表格数据提取的痛点 | </p>
+            </div>
+            <div class="max-w-4xl mx-auto border-t border-gray-200 pt-4">
+                <h4 class="text-xs font-semibold text-gray-700 mb-2 text-center">⚠️ 免责声明</h4>
+                <p class="text-xs text-gray-500 text-center leading-relaxed">
+                    本系统仅为辅助工具，仅供参考使用。识别结果可能因数据格式不同而存在误差，请用户自行核对和验证提取的数据。
+                    使用本系统所产生的一切后果由使用者自行承担，开发者不承担任何责任。本系统不对提取的准确性、完整性和适用性做任何保证。
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        function app() {
+            return {
+                selectedFile: null,
+                fileData: null,
+                selectedSheet: null,
+                worksheets: [],
+                processing: false,
+                isDragging: false,
+                result: null,
+                manualCodes: {
+                    supplier_code: '',
+                    category_code: ''
+                },
+                selectedTemplate: 'default',
+                corrections: {},
+                originalFileData: null,  // 保存原始文件数据
+                validationWarnings: {},  // 验证警告
+
+                // 所有标准字段
+                STANDARD_FIELDS: ['条码', '品名', '进价', '零售价', '单位', '规格', '数量', '型号', '分类', '品牌', '供应商', '产地', '保质期'],
+
+                getAllFields() {
+                    // 返回所有标准字段，优先显示已识别的字段
+                    const recognizedFields = this.result?.mappings ? Object.keys(this.result.mappings) : [];
+                    const standardFields = [...this.STANDARD_FIELDS];
+                    
+                    // 重新排序：已识别的字段在前
+                    const allFields = [];
+                    recognizedFields.forEach(field => {
+                        if (standardFields.includes(field)) {
+                            allFields.push(field);
+                        }
+                    });
+                    standardFields.forEach(field => {
+                        if (!allFields.includes(field)) {
+                            allFields.push(field);
+                        }
+                    });
+                    
+                    return allFields;
+                },
+
+                getStatusText(field) {
+                    if (this.corrections[field] !== '') {
+                        return '已选: [' + this.getColumnName(this.corrections[field]) + ']';
+                    } else if (this.result?.mappings?.[field]) {
+                        return '当前: [' + this.getColumnName(this.result.mappings[field].column_index) + ']';
+                    } else {
+                        return '未识别';
+                    }
+                },
+
+                getColumnName(colIndex) {
+                    if (!this.result || !this.result.headers) return '';
+                    // 处理字符串或数字类型的索引
+                    const index = parseInt(colIndex);
+                    if (isNaN(index)) return '';
+                    return this.result.headers[index] || '';
+                },
+
+                getColumnPreview(colIndex) {
+                    if (!this.result || !this.result.column_previews) return '(无数据)';
+                    // 处理字符串或数字类型的索引
+                    const index = String(colIndex);
+                    return this.result.column_previews[index] || '(无数据)';
+                },
+
+                isValidColumn(header) {
+                    // 过滤无效的列标题
+                    const invalidPatterns = [
+                        'nan', 'none', 'null', 'undefined',
+                        '行号', '序号', '编号',
+                        'empty', 'blank'
+                    ];
+                    
+                    const headerLower = String(header).toLowerCase().trim();
+                    
+                    // 空字符串无效
+                    if (!headerLower) {
+                        return false;
+                    }
+                    
+                    // 检查是否完全匹配无效模式（不是包含）
+                    for (const pattern of invalidPatterns) {
+                        if (headerLower === pattern) {
+                            return false;
+                        }
+                    }
+                    
+                    // 检查是否完全是数字（像行号）
+                    if (/^\d+$/.test(headerLower)) {
+                        return false;
+                    }
+                    
+                    return true;
+                },
+
+                getValidHeaders() {
+                    // 返回有效的列标题（过滤无效列）
+                    if (!this.result || !this.result.headers) return [];
+                    
+                    const validColumns = [];
+                    this.result.headers.forEach((header, idx) => {
+                        if (this.isValidColumn(header)) {
+                            validColumns.push({
+                                index: idx,
+                                header: header
+                            });
+                        }
+                    });
+                    
+                    return validColumns;
+                },
+
+                handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.selectedFile = file;
+                        this.readAndUploadFile(file);
+                    }
+                },
+
+                handleDrop(event) {
+                    this.isDragging = false;
+                    const file = event.dataTransfer.files[0];
+                    if (file) {
+                        this.selectedFile = file;
+                        this.readAndUploadFile(file);
+                    }
+                },
+
+                async readAndUploadFile(file) {
+                    // 读取文件为base64
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        this.fileData = e.target.result;
+                        await this.uploadFile();
+                    };
+                    reader.readAsDataURL(file);
+                },
+
+                async uploadFile() {
+                    if (!this.selectedFile || !this.fileData) return;
+
+                    this.processing = true;
+                    this.result = null;
+                    this.worksheets = [];
+                    this.corrections = {};
+                    this.originalFileData = this.fileData;  // 保存原始文件数据
+
+                    const formData = new FormData();
+                    formData.append('file', this.selectedFile);
+
+                    try {
+                        const response = await fetch('/api/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('上传失败');
+                        }
+
+                        const data = await response.json();
+
+                        if (data.multiple_sheets) {
+                            // 多工作表，显示工作表选择器
+                            this.worksheets = data.worksheets;
+                            this.showNotification(`📋 文件包含 ${data.worksheets.length} 个工作表，请选择要处理的工作表`, 'info');
+                            this.processing = false;
+                        } else if (data.success) {
+                            // 单工作表或合并后的结果，直接显示结果
+                            this.result = data;
+                            this.showNotification('✅ 识别成功！', 'success');
+                            this.processing = false;
+                        } else {
+                            this.showNotification('❌ ' + (data.error || '识别失败'), 'error');
+                            this.processing = false;
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.showNotification('❌ 上传失败: ' + error.message, 'error');
+                        this.processing = false;
+                    }
+                },
+
+                async processFile() {
+                    if (!this.selectedFile) return;
+
+                    this.processing = true;
+                    this.result = null;
+
+                    const formData = new FormData();
+                    formData.append('file', this.selectedFile);
+
+                    try {
+                        const response = await fetch('/api/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('上传失败');
+                        }
+
+                        this.result = await response.json();
+
+                        if (this.result.success) {
+                            this.showNotification('✅ 识别成功！', 'success');
+                        } else {
+                            this.showNotification('❌ ' + (this.result.error || '识别失败'), 'error');
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.showNotification('❌ 处理出错: ' + error.message, 'error');
+                    } finally {
+                        this.processing = false;
+                    }
+                },
+
+                async processSelectedSheet() {
+                    if (!this.selectedFile || !this.fileData || !this.selectedSheet) return;
+
+                    this.processing = true;
+                    this.result = null;
+
+                    try {
+                        // 提取base64数据
+                        const base64Data = this.fileData.split(',')[1];
+
+                        const response = await fetch('/api/process-sheet', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                filename: this.selectedFile.name,
+                                sheet_index: this.selectedSheet.index,
+                                sheet_name: this.selectedSheet.name,
+                                file_data: base64Data
+                            })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('处理失败');
+                        }
+
+                        this.result = await response.json();
+
+                        if (this.result.success) {
+                            this.showNotification('✅ 识别成功！', 'success');
+                            this.processing = false;
+                        } else {
+                            this.showNotification('❌ ' + (this.result.error || '识别失败'), 'error');
+                            this.processing = false;
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.showNotification('❌ 处理失败: ' + error.message, 'error');
+                    } finally {
+                        this.processing = false;
+                    }
+                },
+
+                validateCorrection(field) {
+                    // 验证选择是否合理
+                    const newColIndex = parseInt(this.corrections[field]);
+                    if (isNaN(newColIndex)) return;
+                    
+                    const headerName = this.result.headers[newColIndex];
+                    const currentMapping = this.result.mappings[field];
+                    
+                    // 检查是否选择了与字段不匹配的列
+                    const fieldKeywordMap = {
+                        '条码': ['条', '码', 'bar', 'code'],
+                        '品名': ['名', '品', 'name', 'product'],
+                        '进价': ['价', '本', 'price', 'cost'],
+                        '零售价': ['售', '零', 'retail', 'sell'],
+                        '单位': ['单', '位', 'unit'],
+                        '规格': ['规', '格', 'spec']
+                    };
+                    
+                    const keywords = fieldKeywordMap[field] || [];
+                    const headerLower = headerName.toLowerCase();
+                    const hasKeyword = keywords.some(kw => headerLower.includes(kw));
+                    
+                    if (!hasKeyword) {
+                        this.validationWarnings[field] = `⚠️ 警告: "${headerName}" 可能不是正确的${field}列`;
+                    } else {
+                        delete this.validationWarnings[field];
+                    }
+                },
+
+                async applyCorrection() {
+                    if (!this.result) {
+                        this.showNotification('❌ 没有可指正的数据', 'error');
+                        return;
+                    }
+
+                    // 检查是否有指正
+                    const correctedFields = Object.keys(this.corrections).filter(key => this.corrections[key] !== '');
+                    if (correctedFields.length === 0) {
+                        this.showNotification('⚠️ 请先选择要指正的字段', 'warning');
+                        return;
+                    }
+
+                    // 检查是否有警告
+                    const warnings = Object.keys(this.validationWarnings);
+                    if (warnings.length > 0) {
+                        const warningText = Object.values(this.validationWarnings).join('\n');
+                        if (!confirm(warningText + '\n\n是否继续应用指正？')) {
+                            return;
+                        }
+                    }
+
+                    this.processing = true;
+
+                    try {
+                        // 应用指正到映射
+                        const corrected_mapping = JSON.parse(JSON.stringify(this.result.mappings || {}));
+                        for (const field of correctedFields) {
+                            const newColumnIndex = parseInt(this.corrections[field]);
+                            corrected_mapping[field] = {
+                                column_index: newColumnIndex,
+                                column_name: this.result.headers[newColumnIndex],
+                                confidence: 1.0,
+                                keyword_len: this.result.headers[newColumnIndex].length,
+                                match_count: 1,
+                                manual: true
+                            };
+                        }
+
+                        // 使用指正后的映射重新提取数据
+                        if (this.selectedFile && this.originalFileData) {
+                            // 提取base64数据
+                            const base64Data = this.originalFileData.split(',')[1];
+                            
+                            const requestData = {
+                                filename: this.selectedFile.name,
+                                file_data: base64Data,
+                                corrected_mapping: corrected_mapping
+                            };
+                            
+                            console.log('发送指正请求:', requestData);
+                            console.log('corrected_mapping:', corrected_mapping);
+                            
+                            const response = await fetch('/api/apply-correction', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(requestData)
+                            });
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                if (data.success) {
+                                    // 更新结果，使用重新提取的数据
+                                    this.result = data;
+                                    this.corrections = {};
+                                    this.validationWarnings = {};
+                                    this.showNotification('✅ 指正应用成功！数据已重新提取', 'success');
+                                } else {
+                                    throw new Error(data.error || '重新提取数据失败');
+                                }
+                            } else {
+                                throw new Error('重新提取数据失败');
+                            }
+                        } else {
+                            // 如果没有原始文件，只更新映射（不推荐）
+                            this.result.mappings = corrected_mapping;
+                            this.validationWarnings = {};
+                            this.corrections = {};
+                            this.showNotification('⚠️ 指正已应用但未重新提取数据（建议重新上传文件）', 'warning');
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.showNotification('❌ 应用指正失败: ' + error.message, 'error');
+                    } finally {
+                        this.processing = false;
+                    }
+                },
+
+                async exportData() {
+                    if (!this.result || !this.result.results) return;
+
+                    try {
+                        const requestBody = {
+                            results: this.result.results,
+                            manual_codes: this.manualCodes
+                        };
+
+                        // 如果选择了特定模板，添加template_file参数
+                        if (this.selectedTemplate !== 'default') {
+                            requestBody.template_file = this.selectedTemplate;
+                        } else {
+                            requestBody.erp_template = 'default';
+                        }
+
+                        const response = await fetch('/api/export', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(requestBody)
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('导出失败');
+                        }
+
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+
+                        // 从响应头获取文件名
+                        const contentDisposition = response.headers.get('Content-Disposition');
+                        let filename = '提取结果.xlsx';
+                        if (contentDisposition) {
+                            const filenameMatch = contentDisposition.match(/filename\*=utf-8''(.+)/);
+                            if (filenameMatch) {
+                                filename = decodeURIComponent(filenameMatch[1]);
+                            }
+                        }
+
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+
+                        this.showNotification('✅ 导出成功！', 'success');
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.showNotification('❌ 导出失败: ' + error.message, 'error');
+                    }
+                },
+
+                showNotification(message, type) {
+                    // 简单的通知实现
+                    alert(message);
+                },
+
+                resetCorrections() {
+                    this.corrections = {};
+                    this.validationWarnings = {};
+                }
+            }
+        }
+    </script>
+</body>
+</html>
