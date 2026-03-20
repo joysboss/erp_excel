@@ -16,35 +16,28 @@ logger = logging.getLogger(__name__)
 class ExcelExporter:
     """Excel导出器"""
 
-    # 字段映射关系
+    # 源数据字段到通用语义的映射
     FIELD_MAPPING = {
         "条码": "条码",
-        "品名": "名称",
+        "品名": "品名",
         "规格": "规格",
         "单位": "单位",
         "进价": "进价",
         "零售价": "零售价"
     }
 
-    # 默认值
-    DEFAULT_VALUES = {
-        "自编码": "0",
-        "批发价": "",
-        "会员价": "",
-        "配送价": "",
-        "联营扣率": "",
-        "进货规格": "",
-        "产地": "",
-        "计价方式": "",
-        "是否积分": "",
-        "前台议价": "",
-        "前台折扣": "",
-        "门店变价": "",
-        "助记码": "",
-        "经营方式": "",
-        "品牌编码": "",
-        "保质期": "",
-        "课组": ""
+    # 通用语义到各模板字段的映射规则（关键词匹配）
+    SEMANTIC_KEYWORDS = {
+        "条码": ["货号", "条码", "条形码", "商品码", "编码", "自编码", "code", "barcode"],
+        "品名": ["品名", "名称", "商品名", "商品名称", "产品名", "name", "product"],
+        "规格": ["规格", "规格型号", "型号", "容量", "净含量", "spec"],
+        "单位": ["单位", "计量单位", "包装", "unit"],
+        "进价": ["进价", "进货价", "成本价", "采购价", "批发价", "进货单价", "cost", "price"],
+        "零售价": ["零售价", "售价", "销售价", "销售单价", "零售金额", "retail", "sell"],
+        "品牌": ["品牌", "品牌编码", "brand"],
+        "产地": ["产地", "生产地", "origin"],
+        "供应商编码": ["供应商编码", "主供应商编码", "supplier"],
+        "类别编码": ["类别编码", "分类编码", "category"],
     }
 
     def export(self, data: List[Dict], manual_codes: Dict = None,
@@ -156,6 +149,53 @@ class ExcelExporter:
 
         return merged_data
 
+    def _detect_template_header_row(self, template_file: str) -> int:
+        """
+        自动检测模板文件的表头行
+        跳过说明行、合并单元格等非数据行，找到包含实际字段名的行
+
+        Args:
+            template_file: 模板文件路径
+
+        Returns:
+            表头行索引（从0开始）
+        """
+        # 常见的字段名关键词，用于识别表头行
+        header_keywords = [
+            '货号', '品名', '条码', '名称', '规格', '单位',
+            '进价', '售价', '零售价', '编码', '类别', '品牌'
+        ]
+
+        # 读取前10行，查找表头行
+        for header_row in range(min(10, 20)):
+            try:
+                df = pd.read_excel(template_file, header=header_row, nrows=1)
+                cols = [str(c).strip() for c in df.columns.tolist()]
+
+                # 过滤无效列名（Unnamed、空值、纯数字）
+                valid_cols = [
+                    c for c in cols
+                    if c and not c.startswith('Unnamed') and not c.replace('.', '').isdigit()
+                ]
+
+                # 检查有效列名中是否包含至少2个已知关键词
+                match_count = sum(
+                    1 for kw in header_keywords
+                    if any(kw in col for col in valid_cols)
+                )
+
+                if match_count >= 2 and len(valid_cols) >= 3:
+                    logger.info(f"检测到模板表头行: 第{header_row + 1}行, "
+                                f"有效字段数: {len(valid_cols)}, "
+                                f"关键词匹配数: {match_count}")
+                    return header_row
+            except Exception:
+                continue
+
+        # 默认使用第一行
+        logger.warning(f"未检测到有效表头行，使用默认第1行")
+        return 0
+
     def export_by_template_file(self, data: List[Dict], manual_codes: Dict = None,
                                 template_file: str = None) -> str:
         """
@@ -175,11 +215,21 @@ class ExcelExporter:
         if not template_file or not os.path.exists(template_file):
             raise ValueError(f"模板文件不存在: {template_file}")
 
+        # 自动检测表头行
+        header_row = self._detect_template_header_row(template_file)
+
         # 读取模板，获取字段顺序
-        template_df = pd.read_excel(template_file)
+        template_df = pd.read_excel(template_file, header=header_row)
         field_order = template_df.columns.tolist()
 
-        logger.info(f"读取模板文件: {template_file}, 字段数: {len(field_order)}")
+        # 过滤无效列名
+        field_order = [
+            str(f).strip() for f in field_order
+            if str(f).strip() and not str(f).startswith('Unnamed')
+        ]
+
+        logger.info(f"读取模板文件: {template_file}, 表头行: {header_row + 1}, 字段数: {len(field_order)}")
+        logger.info(f"模板字段: {field_order}")
 
         # 合并数据
         merged_data = self._merge_data_by_template(data, manual_codes, field_order)
@@ -200,37 +250,74 @@ class ExcelExporter:
         logger.info(f"导出成功: {output_file}, 共 {len(data)} 行")
         return output_file
 
+    def _match_field_to_template(self, semantic_field: str, template_fields: List[str]) -> str:
+        """
+        将语义字段匹配到模板中的实际字段名
+
+        Args:
+            semantic_field: 语义字段名（如 "条码"）
+            template_fields: 模板字段名列表
+
+        Returns:
+            匹配到的模板字段名，未匹配到则返回语义字段名本身
+        """
+        keywords = self.SEMANTIC_KEYWORDS.get(semantic_field, [])
+        if not keywords:
+            return semantic_field
+
+        for template_field in template_fields:
+            template_lower = str(template_field).strip().lower()
+            for keyword in keywords:
+                if keyword.lower() == template_lower or keyword.lower() in template_lower:
+                    return str(template_field).strip()
+
+        return semantic_field
+
     def _merge_data_by_template(self, data: List[Dict], codes: Dict,
                                 field_order: List[str]) -> List[Dict]:
         """
-        根据模板字段合并数据
+        根据模板字段智能合并数据
+        基于关键词匹配，将源数据字段映射到模板实际字段名
 
         Args:
             data: 识别的数据列表
             codes: 手工编码
-            field_order: 模板字段顺序
+            field_order: 模板字段顺序（实际字段名列表）
 
         Returns:
             合并后的数据列表
         """
         merged_data = []
 
+        # 预计算：每个语义字段匹配到哪个模板字段
+        semantic_to_template = {}
+        for src_field in self.FIELD_MAPPING.keys():
+            matched = self._match_field_to_template(src_field, field_order)
+            semantic_to_template[src_field] = matched
+
+        logger.info(f"字段映射结果: {semantic_to_template}")
+
         for item in data:
             merged_item = {}
 
-            # 映射字段
-            for src_field, dst_field in self.FIELD_MAPPING.items():
-                if src_field in item:
-                    merged_item[dst_field] = item[src_field]
+            # 按语义字段映射到模板实际字段名
+            for src_field, template_field in semantic_to_template.items():
+                if src_field in item and item[src_field]:
+                    merged_item[template_field] = item[src_field]
 
-            # 添加手工编码
-            merged_item["类别编码"] = codes.get("category_code", "")
-            merged_item["主供应商编码"] = codes.get("supplier_code", "")
+            # 添加手工编码 - 智能匹配模板中的字段名
+            supplier_field = self._match_field_to_template("供应商编码", field_order)
+            category_field = self._match_field_to_template("类别编码", field_order)
+            merged_item[supplier_field] = codes.get("supplier_code", "")
+            merged_item[category_field] = codes.get("category_code", "")
 
-            # 添加默认值
-            for field, default_value in self.DEFAULT_VALUES.items():
-                if field not in merged_item:
-                    merged_item[field] = default_value
+            # 直接复制源数据中已存在的字段（如果模板也有该字段）
+            for src_field, value in item.items():
+                if src_field in self.FIELD_MAPPING:
+                    continue
+                # 如果源字段名恰好与模板字段名一致，直接使用
+                if src_field in field_order and src_field not in merged_item:
+                    merged_item[src_field] = value
 
             merged_data.append(merged_item)
 
